@@ -190,6 +190,13 @@ final class LauncherController {
                     if flags.contains(.option), event.keyCode == kVK_Delete {
                         self.store.deleteSelection(); return nil
                     }
+                    if flags.intersection([.command, .option, .control, .shift]).isEmpty,
+                       let character = event.characters, let number = Int(character),
+                       (1...4).contains(number), number <= self.store.resultCount {
+                        self.store.select(index: number - 1)
+                        self.store.launchSelection(paste: true)
+                        return nil
+                    }
                     if flags.contains(.command), let character = event.charactersIgnoringModifiers,
                        let number = Int(character), (1...9).contains(number), number <= self.store.resultCount {
                         self.store.select(index: number - 1)

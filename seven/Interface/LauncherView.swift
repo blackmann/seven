@@ -244,7 +244,7 @@ struct LauncherView: View {
                     case .clipboard(let entries):
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                             animatedRow(at: index) {
-                                ClipboardHistoryRow(store: store, entry: entry)
+                                ClipboardHistoryRow(store: store, entry: entry, index: index)
                             }
                             .id(entry.id.uuidString)
                         }

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import XCTest
 @testable import seven
 
@@ -15,6 +16,22 @@ final class ClipboardTests: XCTestCase {
     @MainActor private func copy(_ text: String, to board: NSPasteboard, history: ClipboardHistory) {
         board.clearContents(); board.setString(text, forType: .string)
         history.captureIfChanged(sourceName: "Test Editor", sourceBundleIdentifier: "test.editor")
+    }
+
+    @MainActor func testAutomaticPasteDefaultsOnAndPreservesSavedPreference() throws {
+        let suite = "seven-tests-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let board = NSPasteboard(name: .init(suite))
+        defer { board.releaseGlobally() }
+        func history() -> ClipboardHistory {
+            ClipboardHistory(storageURL: nil, pasteboard: board, autoStart: false, defaults: defaults)
+        }
+        XCTAssertTrue(history().pasteAutomatically)
+        history().pasteAutomatically = false
+        XCTAssertFalse(history().pasteAutomatically)
+        history().pasteAutomatically = true
+        XCTAssertTrue(history().pasteAutomatically)
     }
 
     @MainActor func testCaptureSearchDeduplicationAndRecency() {
@@ -155,7 +172,7 @@ final class ClipboardTests: XCTestCase {
             XCTAssertEqual(store.cardHeight, LauncherLayout.searchHeight + 1 + LauncherLayout.footerHeight)
             store.query = "second"
             var restored: UUID?
-            store.onRestore = { entry, paste, plain in restored = entry.id; XCTAssertFalse(paste); XCTAssertTrue(plain) }
+            store.onRestore = { entry, paste, plain in restored = entry.id; XCTAssertTrue(paste); XCTAssertTrue(plain) }
             store.launchSelection(plainText: true)
             XCTAssertEqual(restored, store.clipboardResults.first?.id)
             store.deleteSelection()
@@ -165,6 +182,75 @@ final class ClipboardTests: XCTestCase {
             XCTAssertEqual(store.cardHeight, LauncherLayout.searchHeight)
             XCTAssertNotNil(NSImage(systemSymbolName: LauncherLayout.clipboardSymbol, accessibilityDescription: nil))
         }
+    }
+
+    @MainActor func testNumberKeysQuickPasteCurrentClipboardResultsOnly() async throws {
+        let board = NSPasteboard(name: .init("seven-tests-" + UUID().uuidString))
+        defer { board.releaseGlobally() }
+        let history = ClipboardHistory(storageURL: nil, pasteboard: board, autoStart: false, defaults: nil)
+        for text in ["first", "second", "third", "fourth", "fifth"] {
+            copy(text, to: board, history: history)
+        }
+        history.pasteAutomatically = false
+        let store = LauncherStore(applications: [], clipboard: history)
+        let controller = LauncherController(store: store)
+        controller.showClipboard(at: NSPoint(x: 400, y: 600))
+        defer { controller.dismiss() }
+        var requests: [(id: UUID, paste: Bool, plainText: Bool)] = []
+        store.onRestore = { requests.append(($0.id, $1, $2)) }
+        try await Task.sleep(for: .milliseconds(100))
+        let panel = try XCTUnwrap(controller.panel)
+        let editor = try XCTUnwrap(panel.firstResponder as? NSTextView)
+
+        func search(_ query: String) {
+            editor.insertText(query, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+        }
+
+        func sendKey(_ character: String, code: Int, modifiers: NSEvent.ModifierFlags = []) throws {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+                                                      timestamp: 0, windowNumber: panel.windowNumber, context: nil,
+                                                      characters: character, charactersIgnoringModifiers: character,
+                                                      isARepeat: false, keyCode: UInt16(code)))
+            NSApp.sendEvent(event)
+        }
+
+        let expected = Array(store.clipboardResults.prefix(4).map(\.id))
+        for (index, code) in [kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4].enumerated() {
+            try sendKey(String(index + 1), code: code)
+        }
+        XCTAssertEqual(requests.map(\.id), expected)
+        XCTAssertTrue(requests.allSatisfy { $0.paste && !$0.plainText })
+        XCTAssertEqual(store.query, "", "Quick-paste keys must not enter the search field")
+
+        search("second")
+        try sendKey("1", code: kVK_ANSI_1)
+        XCTAssertEqual(requests.last?.id, history.entries.first { $0.text == "second" }?.id)
+        XCTAssertEqual(requests.count, 5)
+        XCTAssertEqual(store.query, "second")
+
+        try sendKey("4", code: kVK_ANSI_4)
+        XCTAssertEqual(requests.count, 5, "A missing numbered result must not paste the current selection")
+        XCTAssertTrue(store.query.contains("4"))
+
+        search("")
+        try sendKey("5", code: kVK_ANSI_5)
+        XCTAssertEqual(requests.count, 5)
+        XCTAssertEqual(store.query, "5")
+
+        search("")
+        try sendKey("!", code: kVK_ANSI_1, modifiers: .shift)
+        XCTAssertEqual(requests.count, 5)
+        XCTAssertEqual(store.query, "!")
+
+        search("")
+        try sendKey("1", code: kVK_ANSI_1, modifiers: .command)
+        XCTAssertEqual(requests.count, 6)
+        XCTAssertFalse(try XCTUnwrap(requests.last).paste, "Command-number keeps the automatic-pasting preference")
+
+        store.toggleClipboard()
+        try sendKey("1", code: kVK_ANSI_1)
+        XCTAssertEqual(requests.count, 6)
+        XCTAssertEqual(store.query, "1", "Number keys remain normal input outside clipboard history")
     }
 
     @MainActor func testPlainPasteAndExplicitCopyActionsRespectTheirIntent() {

@@ -4,8 +4,10 @@ import SwiftUI
 struct ClipboardHistoryRow: View {
     @ObservedObject var store: LauncherStore
     let entry: ClipboardEntry
+    let index: Int
 
     private var selected: Bool { store.selectedClipboardEntry?.id == entry.id }
+    private var quickPasteNumber: Int? { index < 4 ? index + 1 : nil }
 
     var body: some View {
         Button {
@@ -21,10 +23,11 @@ struct ClipboardHistoryRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 6)
-                if selected {
-                    Image(systemName: "return")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                if let quickPasteNumber {
+                    Image(systemName: "\(quickPasteNumber).square.fill")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 8)
@@ -37,6 +40,7 @@ struct ClipboardHistoryRow: View {
         .onHover { if $0 { store.select(entry) } }
         .help(entry.detail)
         .accessibilityLabel("Paste \(entry.title)")
+        .accessibilityHint(quickPasteNumber.map { "Press \($0) to paste" } ?? "")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .overlay {
             ClipboardSecondaryClick { store.select(entry); store.onShowActions?() }

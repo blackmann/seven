@@ -54,7 +54,7 @@ final class ClipboardHistory: ObservableObject {
     @Published var isPaused = false {
         didSet { defaults?.set(isPaused, forKey: "clipboardRecordingPaused"); lastChangeCount = pasteboard.changeCount }
     }
-    @Published var pasteAutomatically = false {
+    @Published var pasteAutomatically = true {
         didSet { defaults?.set(pasteAutomatically, forKey: "clipboardPasteAutomatically") }
     }
     @Published private(set) var storageError: String?
@@ -80,7 +80,7 @@ final class ClipboardHistory: ObservableObject {
         self.defaults = defaults
         lastChangeCount = pasteboard.changeCount
         isPaused = defaults?.bool(forKey: "clipboardRecordingPaused") ?? false
-        pasteAutomatically = defaults?.bool(forKey: "clipboardPasteAutomatically") ?? false
+        pasteAutomatically = defaults?.object(forKey: "clipboardPasteAutomatically") as? Bool ?? true
         if let storageURL, FileManager.default.fileExists(atPath: storageURL.path) {
             do {
                 let data = try Data(contentsOf: storageURL)
