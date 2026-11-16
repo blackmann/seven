@@ -25,6 +25,7 @@
 		6FBD5B0967951A2AB4491491 /* NotesController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A913F032E593E3A713DBAF /* NotesController.swift */; };
 		722A13F02C0E44BCA9DE1E25 /* LauncherDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D7F9D6523D4A66A42F818A /* LauncherDictionary.swift */; };
 		73D1B3A6E4B347F4BD90FF01 /* NotesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D1B3A6E4B347F4BD90FF02 /* NotesTests.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E101 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E102 /* PreferencesView.swift */; };
 		80152BC00D31B6EE68858024 /* SevenApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60C52C781535D42A70AAD475 /* SevenApp.swift */; };
 		8061E4033FBE3BA61A538CFE /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9109F1BA6D7FC531B08CFEC1 /* Cocoa.framework */; };
 		8B53E4EA620B67E8E6F5F13D /* SwitcherHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B9941DC61A4826FDE56CF6 /* SwitcherHUD.swift */; };
@@ -76,6 +77,7 @@
 		3BAF0F0B9E60D1C57572C4A7 /* PreviewExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PreviewExporter.swift; sourceTree = "<group>"; };
 		405688B8F82909D6596A9C1D /* LauncherCommand.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LauncherCommand.swift; sourceTree = "<group>"; };
 		5F1AAD20072931A7525FDF1B /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E102 /* PreferencesView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		60C52C781535D42A70AAD475 /* SevenApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SevenApp.swift; sourceTree = "<group>"; };
 		65CD5A4A7FE774EBBE58C677 /* VaultStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultStore.swift; sourceTree = "<group>"; };
 		70B3E9B3720DE5A93AD3CE3D /* README.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -167,6 +169,7 @@
 			isa = PBXGroup;
 			children = (
 				60C52C781535D42A70AAD475 /* SevenApp.swift */,
+				A1B2C3D4E5F6A7B8C9D0E102 /* PreferencesView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -376,6 +379,7 @@
 				ED1A70044087D7C5A109D9CF /* VaultSearch.swift in Sources */,
 				4600A754A1C8887DC6974614 /* VaultStore.swift in Sources */,
 				80152BC00D31B6EE68858024 /* SevenApp.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E101 /* PreferencesView.swift in Sources */,
 				3AD5C4FF63F12662D376F31A /* SwitcherModel.swift in Sources */,
 				AD46DD5C9B0CB2E92C3BEF87 /* PreviewExporter.swift in Sources */,
 				8B53E4EA620B67E8E6F5F13D /* SwitcherHUD.swift in Sources */,

@@ -99,7 +99,9 @@ final class NotesController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.isFloatingPanel = false
         panel.level = .normal
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Follow the user to the Space it's summoned on (including a fullscreen
+        // one), but never join Spaces other apps create when entering fullscreen.
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.minSize = NSSize(width: NotesLayout.width + 2 * LauncherLayout.inset,
                                height: NotesLayout.minimumHeight + 2 * LauncherLayout.inset)
         panel.delegate = self

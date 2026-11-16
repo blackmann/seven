@@ -217,6 +217,9 @@ final class NotesTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(200))
             let panel = try XCTUnwrap(controller.panel)
             XCTAssertEqual(panel.level, .normal, "Other apps' windows should be able to cover Notes")
+            XCTAssertFalse(panel.collectionBehavior.contains(.canJoinAllSpaces),
+                           "Notes must not join the Space another app creates when it enters fullscreen")
+            XCTAssertTrue(panel.collectionBehavior.contains(.moveToActiveSpace))
             XCTAssertFalse(panel.styleMask.contains(.nonactivatingPanel))
             XCTAssertTrue(NSApp.isActive, "Notes must activate Seven so modifier gestures cannot reach the previous app")
             XCTAssertEqual(NSWorkspace.shared.frontmostApplication?.processIdentifier, ProcessInfo.processInfo.processIdentifier)

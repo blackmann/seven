@@ -3,25 +3,41 @@ import Carbon
 import SwiftUI
 
 @main
-enum SevenApp {
-    @MainActor
-    static func main() {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        withExtendedLifetime(delegate) { app.run() }
+struct SevenApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+
+    var body: some Scene {
+        // Info.plist's LSUIElement keeps seven out of the Dock and ⌘Tab.
+        MenuBarExtra("seven", systemImage: "app.background.dotted") {
+            StatusMenu()
+        }
+        Settings {
+            PreferencesView(shortcuts: { [delegate] in delegate.shortcutStatus })
+        }
+    }
+}
+
+private struct StatusMenu: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("Preferences…") {
+            // seven is an accessory app, so it must activate or Settings opens behind other apps.
+            NSApp.activate()
+            openSettings()
+        }
+        .keyboardShortcut(",")
+        Divider()
+        Button("Quit seven") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 }
 
 @MainActor
-enum ApplicationMenu {
-    static func makeMainMenu() -> NSMenu {
-        let main = NSMenu()
-        let application = NSMenu(title: "seven")
-        application.addItem(withTitle: "Quit seven", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        main.addItem(withTitle: "seven", action: nil, keyEquivalent: "").submenu = application
-
+enum EditMenu {
+    /// seven's own Edit menu. SwiftUI's default one lacks Paste and Match Style, and its
+    /// Redo shortcut doesn't reach editors in seven's nonactivating panels.
+    static func make() -> NSMenu {
         // Nil targets let AppKit route and validate standard editing actions
         // through the first responder, including in nonactivating panels.
         let edit = NSMenu(title: "Edit")
@@ -37,13 +53,12 @@ enum ApplicationMenu {
         edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
         edit.addItem(.separator())
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        main.addItem(withTitle: "Edit", action: nil, keyEquivalent: "").submenu = edit
-        return main
+        return edit
     }
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let shortcut = GlobalShortcut()
     private let launcherShortcut = GlobalShortcut(keyCode: UInt32(kVK_Space), modifiers: UInt32(cmdKey), id: 2)
     private var controller: SwitcherController!
@@ -51,17 +66,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var clipboard: ClipboardHistory!
     private var notes: NotesController?
     private var notesDefaults: UserDefaults = .standard
-    private var statusItem: NSStatusItem!
-    private var modeItem: NSMenuItem!
-    private var toggleItem: NSMenuItem!
-    private var shortcutItem: NSMenuItem!
-    private var launcherShortcutItem: NSMenuItem!
     private var sleepObserver: NSObjectProtocol?
     private var screenObserver: NSObjectProtocol?
+    private var menuObservers: [NSObjectProtocol] = []
+    private let editMenu = EditMenu.make()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = ApplicationMenu.makeMainMenu()
         let arguments = ProcessInfo.processInfo.arguments
+        // Reinstall after any event-loop pass, and before a panel takes keyboard focus.
+        installEditMenu()
+        menuObservers = [NSApplication.didUpdateNotification, NSWindow.didBecomeKeyNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.installEditMenu() }
+            }
+        }
         if let index = arguments.firstIndex(of: "--render-previews"), arguments.indices.contains(index + 1) {
             PreviewExporter.export(to: URL(fileURLWithPath: arguments[index + 1], isDirectory: true))
             NSApp.terminate(nil)
@@ -82,9 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         launcher = LauncherController(store: LauncherStore(clipboard: clipboard,
             calculationHistoryURL: isVerification ? nil : LauncherStore.defaultCalculationHistoryURL))
         controller = SwitcherController(mode: mode)
-        controller.onCommit = { [weak self] mode in
+        controller.onCommit = { mode in
             UserDefaults.standard.set(mode.rawValue, forKey: "selectedMode")
-            self?.refreshMenu()
         }
         controller.onConfirm = { [weak self] mode, anchor in
             switch mode {
@@ -92,7 +109,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .notes: self?.presentNotes(at: anchor)
             }
         }
-        makeMenu()
         shortcut.onPress = { [weak self] in
             guard let self else { return }
             self.launcher.dismiss(restoreFocus: true)
@@ -101,7 +117,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         shortcut.register()
         launcherShortcut.onPress = { [weak self] in self?.presentLauncher() }
         launcherShortcut.register()
-        refreshMenu()
 
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.controller.dismiss(); self?.launcher.dismiss() }
@@ -131,50 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if arguments.contains("--clipboard-smoke-test") { runClipboardSmokeTest() }
     }
 
-    private func makeMenu() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let image = NSImage(systemSymbolName: "app.background.dotted", accessibilityDescription: "seven")
-        // Let AppKit choose the icon color for the menu bar's background and appearance.
-        image?.isTemplate = true
-        statusItem.button?.image = image
-        let menu = NSMenu()
-        menu.delegate = self
-        modeItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        menu.addItem(modeItem)
-        menu.addItem(.separator())
-        launcherShortcutItem = NSMenuItem(title: "Show Launcher   ⌘Space", action: #selector(showLauncher), keyEquivalent: "")
-        launcherShortcutItem.target = self
-        menu.addItem(launcherShortcutItem)
-        shortcutItem = NSMenuItem(title: "Show Switcher   ⌥⇥", action: #selector(showSwitcher), keyEquivalent: "")
-        shortcutItem.target = self
-        menu.addItem(shortcutItem)
-        let clipboardItem = NSMenuItem(title: "Clipboard History", action: #selector(showClipboard), keyEquivalent: "")
-        clipboardItem.target = self
-        menu.addItem(clipboardItem)
-        let notesItem = NSMenuItem(title: "Notes", action: #selector(showNotes), keyEquivalent: "")
-        notesItem.image = NSImage(systemSymbolName: "tornado", accessibilityDescription: "Notes")
-        notesItem.target = self
-        menu.addItem(notesItem)
-        menu.addItem(NSMenuItem(title: "Scroll ↑ Launcher · ↓ Notes", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Esc cancels · Click confirms", action: nil, keyEquivalent: ""))
-        menu.addItem(.separator())
-        toggleItem = NSMenuItem(title: "Keep Open After Releasing Option", action: #selector(toggleKeepOpen), keyEquivalent: "")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit seven", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
-        statusItem.menu = menu
-    }
-
-    func menuWillOpen(_ menu: NSMenu) { refreshMenu() }
-
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         notes?.prepareToClose() == false ? .terminateCancel : .terminateNow
-    }
-
-    @objc private func showNotes() {
-        DispatchQueue.main.async { [weak self] in self?.presentNotes(at: NSEvent.mouseLocation) }
     }
 
     private func presentNotes(at anchor: NSPoint) {
@@ -189,33 +162,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         launcher.showBelowNotch()
     }
 
-    private func refreshMenu() {
-        modeItem.title = "Selected Mode: \(controller.session.mode.title)"
-        toggleItem.state = UserDefaults.standard.bool(forKey: "keepOpen") ? .on : .off
-        statusItem.button?.toolTip = "seven · Command–Space Launcher · Option–Tab Switcher"
-        shortcutItem.title = shortcut.registrationStatus == noErr
-            ? "Show Switcher   ⌥⇥" : "Show Switcher (⌥⇥ unavailable: \(shortcut.registrationStatus))"
-        launcherShortcutItem.title = launcherShortcut.registrationStatus == noErr
-            ? "Show Launcher   ⌘Space" : "Show Launcher (⌘Space unavailable: \(launcherShortcut.registrationStatus))"
+    /// SwiftUI rebuilds the main menu when scenes change, so reinstall seven's Edit menu whenever it is replaced.
+    private func installEditMenu() {
+        guard let item = NSApp.mainMenu?.item(withTitle: "Edit"), item.submenu !== editMenu else { return }
+        // A menu can only have one parent; detach it from the menu SwiftUI discarded.
+        editMenu.supermenu?.items.first { $0.submenu === editMenu }?.submenu = nil
+        item.submenu = editMenu
     }
 
-    @objc private func showLauncher() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.presentLauncher() }
-    }
-
-    @objc private func showSwitcher() {
-        // NSMenu is still closing during the action; wait until it has released
-        // its own event tracking before ordering the transparent panels forward.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.controller.preview() }
-    }
-
-    @objc private func toggleKeepOpen() {
-        UserDefaults.standard.set(!UserDefaults.standard.bool(forKey: "keepOpen"), forKey: "keepOpen")
-        refreshMenu()
-    }
-
-    @objc private func showClipboard() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.launcher.showClipboard(at: NSEvent.mouseLocation) }
+    var shortcutStatus: ShortcutStatus {
+        ShortcutStatus(launcher: launcherShortcut.registrationStatus, switcher: shortcut.registrationStatus)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -227,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         launcherShortcut.unregister()
         if let sleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver) }
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
-        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
+        menuObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     private func runSmokeTest() {
